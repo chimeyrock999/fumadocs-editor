@@ -375,7 +375,7 @@ importers:
         specifier: ^1.23.0
         version: 1.38.0(react@19.2.8)
       mermaid:
-        specifier: ^11.17.2
+        specifier: ^11.17.2 || ^12.2.0
         version: 11.17.2
       react:
         specifier: ^19.0.0
