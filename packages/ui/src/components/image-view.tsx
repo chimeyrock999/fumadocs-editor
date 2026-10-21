@@ -4,7 +4,7 @@ import { tokens } from "../styles/tokens.stylex";
 import { Image } from "@tiptap/extension-image";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
 import type { Editor, Extension, Range } from "@tiptap/core";
-import { Plugin } from "@tiptap/pm/state";
+import { Plugin, type Transaction } from "@tiptap/pm/state";
 import { ImageIcon } from "lucide-react";
 import { useState } from "react";
 import { content } from "../styles/content";
@@ -34,9 +34,11 @@ const styles = stylex.create({
 });
 
 /**
- * Upload `files` and insert them as images at `at`. A range (such as the
- * typed slash command) is replaced by the first image that uploads, so it
- * stays in place if every upload fails.
+ * Upload `files` and insert them as images at `at`, in order. A range (such
+ * as the typed slash command) is replaced by the first image that uploads,
+ * so it stays in place if every upload fails. `at` is read before the
+ * uploads start, so it is mapped through the edits made while they run
+ * (typing, a collaborator, a sync merge) rather than used as it was.
  */
 export async function insertImages(
   editor: Editor,
@@ -44,20 +46,53 @@ export async function insertImages(
   files: File[],
   at: number | Range,
 ): Promise<void> {
-  let target = at;
-  for (const file of files) {
-    const src = await uploadFile(media, file);
-    if (src === undefined) continue;
-    if (editor.isDestroyed) return;
-    editor
-      .chain()
-      .insertContentAt(target, {
-        type: "image",
-        attrs: { src, alt: file.name.replace(/\.\w+$/, "") },
-      })
-      .run();
-    if (typeof target !== "number") target = target.from;
+  const target = followPosition(editor, at);
+  try {
+    for (const file of files) {
+      const src = await uploadFile(media, file);
+      if (src === undefined) continue;
+      if (editor.isDestroyed) return;
+      target.inserting = true;
+      editor
+        .chain()
+        .insertContentAt(target.current, {
+          type: "image",
+          attrs: { src, alt: file.name.replace(/\.\w+$/, "") },
+        })
+        .run();
+      target.inserting = false;
+    }
+  } finally {
+    target.stop();
   }
+}
+
+/**
+ * `at` mapped through every change to the document until `stop`. Text
+ * typed right at the position stays after it, so the image goes where it
+ * was dropped; while `inserting`, the position moves past the inserted
+ * image, so the next one follows it. A range collapses to a position once
+ * any of it is deleted (an image replaced it, or the text went away
+ * meanwhile), so it never replaces anything else.
+ */
+function followPosition(editor: Editor, at: number | Range) {
+  const target = { current: at, inserting: false, stop: () => {} };
+  const follow = ({ transaction }: { transaction: Transaction }) => {
+    if (!transaction.docChanged) return;
+    const { mapping } = transaction;
+    const current = target.current;
+    if (typeof current === "number") {
+      target.current = mapping.map(current, target.inserting ? 1 : -1);
+      return;
+    }
+    const from = mapping.mapResult(current.from, 1);
+    const to = mapping.mapResult(current.to, -1);
+    target.current =
+      from.deleted || to.deleted || to.pos <= from.pos ? from.pos : { from: from.pos, to: to.pos };
+  };
+  editor.on("transaction", follow);
+  target.stop = () => editor.off("transaction", follow);
+  return target;
 }
 
 function ImageView(props: NodeViewProps) {
