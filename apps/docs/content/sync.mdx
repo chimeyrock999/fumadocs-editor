@@ -94,6 +94,9 @@ Without Vite, `createSyncServer` gives you handlers for any Node HTTP server:
 
 <include meta='title="server.ts"'>../examples/sync-server.ts</include>
 
+Like the Vite plugin, it answers only to [allowed hosts](/auth#allowed-hosts):
+add the host names you serve it under to `allowedHosts`.
+
 The Vite plugin accepts the same options:
 
 <auto-type-table path="../../../packages/core/src/sync/node/server.ts" name="SyncServerOptions" />

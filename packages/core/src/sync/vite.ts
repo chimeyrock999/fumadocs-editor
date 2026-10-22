@@ -6,6 +6,11 @@ import { ASSET_ENDPOINT, SYNC_ENDPOINT, UPLOAD_ENDPOINT } from "./protocol";
 export interface EditorSyncOptions extends Omit<SyncServerOptions, "root"> {
   /** the mirrored directory, resolved against the Vite project root; defaults to it */
   root?: string;
+  /**
+   * See {@link SyncServerOptions.allowedHosts}. Defaults to Vite's
+   * `server.allowedHosts`, so one setting covers the page and the sync server.
+   */
+  allowedHosts?: SyncServerOptions["allowedHosts"];
 }
 
 /**
@@ -13,8 +18,9 @@ export interface EditorSyncOptions extends Omit<SyncServerOptions, "root"> {
  * {@link SYNC_ENDPOINT}, media uploads at {@link UPLOAD_ENDPOINT} (stored
  * under `<root>/assets`, referenced as `./assets/…`), and asset serving at
  * `ASSET_ENDPOINT/<relative>` so the editor can display them.
+ * Requests from hosts and origins outside `allowedHosts` are refused, then
  * `authenticate` guards every surface (see {@link SyncServerOptions.authenticate});
- * absent, everything is allowed (same trust as Vite's own dev socket).
+ * absent, everything else is allowed.
  */
 export function editorSync(options: EditorSyncOptions = {}): Plugin {
   return {
@@ -24,6 +30,7 @@ export function editorSync(options: EditorSyncOptions = {}): Plugin {
       const sync = createSyncServer({
         ...options,
         root: path.resolve(server.config.root, options.root ?? "."),
+        allowedHosts: options.allowedHosts ?? server.config.server.allowedHosts,
       });
       server.httpServer?.on("upgrade", (request, socket, head) => {
         if (request.url === SYNC_ENDPOINT) sync.handleUpgrade(request, socket, head as Buffer);

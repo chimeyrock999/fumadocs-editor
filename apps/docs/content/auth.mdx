@@ -8,6 +8,39 @@ By default, anyone who can reach the sync server can edit, like Vite's own
 dev server. Pass an `authenticate` hook to the server to put the websocket,
 uploads and assets behind your own policy.
 
+## Allowed hosts
+
+Before `authenticate` runs, the server refuses requests that come from the
+wrong place, so a web page open in your browser cannot reach a server on your
+machine:
+
+- The `Host` header must be `localhost`, a `*.localhost` name, an IP address
+  or an entry of `allowedHosts`. This stops DNS rebinding, where a foreign
+  name is made to resolve to your machine.
+- A browser request must come from a page on this server, on a loopback
+  origin (`localhost`, `127.0.0.1`, `[::1]`, any port) or on an allowed host.
+  Browsers let any page open a websocket to any address, so this stops other
+  sites from opening the sync socket.
+
+Requests without an `Origin` header, such as from a script or another server,
+are checked on `Host` only.
+
+Serving the editor under its own domain? List it, and the domain of the page
+that embeds the editor if it differs:
+
+```ts
+createSyncServer({
+  root: "content/docs",
+  allowedHosts: ["docs.internal", ".example.com"], // .example.com: the domain and its subdomains
+});
+```
+
+`editorSync` uses Vite's
+[`server.allowedHosts`](https://vite.dev/config/server-options#server-allowedhosts)
+unless you pass its own, so one setting covers the page and the sync socket.
+`allowedHosts: true` turns these checks off; only do that behind something
+else that checks them.
+
 ## Add an `authenticate` hook
 
 `authenticate` receives the request and returns a [scope](#scopes), or

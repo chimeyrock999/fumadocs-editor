@@ -1,4 +1,10 @@
-import { createServer, type Server } from "node:http";
+import {
+  createServer,
+  request,
+  type IncomingMessage,
+  type OutgoingHttpHeaders,
+  type Server,
+} from "node:http";
 import type { Duplex } from "node:stream";
 import {
   createSyncClient,
@@ -27,6 +33,42 @@ export const until = async <T>(
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 };
+
+/** the status a request gets: 101 when the websocket upgrade is accepted */
+export const send = (
+  port: number,
+  { path: target = "/__fde_sync", method = "GET", headers = {} as OutgoingHttpHeaders } = {},
+) =>
+  new Promise<number>((resolve, reject) => {
+    const upgrade = target === "/__fde_sync";
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path: target,
+        method,
+        headers: upgrade
+          ? {
+              connection: "Upgrade",
+              upgrade: "websocket",
+              "sec-websocket-version": "13",
+              "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+              ...headers,
+            }
+          : headers,
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode!);
+      },
+    );
+    req.on("upgrade", (res: IncomingMessage, socket) => {
+      socket.destroy();
+      resolve(res.statusCode!);
+    });
+    req.on("error", reject);
+    req.end(method === "POST" ? Buffer.from("png") : undefined);
+  });
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 

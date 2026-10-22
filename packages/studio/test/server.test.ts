@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -58,4 +59,36 @@ test("serves the assets of packages the app loads modules from", async () => {
   expect((await fetch(`${url}/@fs${font}`)).status).toBe(200);
   const outside = path.resolve(import.meta.dirname, "../package.json");
   expect((await fetch(`${url}/@fs${outside}`)).status).toBe(403);
+});
+
+test("the sync socket answers only to allowed hosts", async () => {
+  const { port } = server.httpServer!.address() as AddressInfo;
+  const upgrade = (headers: Record<string, string>) =>
+    new Promise<number>((resolve, reject) => {
+      const req = request({
+        host: "localhost",
+        port,
+        path: "/__fde_sync",
+        headers: {
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-version": "13",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+          ...headers,
+        },
+      });
+      req.on("upgrade", (res, socket) => {
+        socket.destroy();
+        resolve(res.statusCode!);
+      });
+      req.on("response", (res) => {
+        res.resume();
+        resolve(res.statusCode!);
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  expect(await upgrade({ host: `localhost:${port}`, origin: url })).toBe(101);
+  expect(await upgrade({ host: "attacker.test", origin: "http://attacker.test" })).toBe(403);
+  expect(await upgrade({ host: `localhost:${port}`, origin: "https://attacker.test" })).toBe(403);
 });

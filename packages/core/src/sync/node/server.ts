@@ -5,11 +5,13 @@ import { PROTOCOL } from "../protocol";
 import { createDocAuthority } from "./authority";
 import type { Connection, Incoming, Resource } from "./connection";
 import { createFiles } from "./files";
+import { createHostCheck, type AllowedHosts } from "./hosts";
 import { createMediaHandlers, type UploadLimits } from "./media";
 import { createAuthorize, type SyncAuthenticate } from "./scope";
 import { createTreeResource } from "./workspace";
 import { createWsCarrier } from "./ws";
 
+export type { AllowedHosts } from "./hosts";
 export type { SyncAuthenticate, SyncScope } from "./scope";
 
 export interface SyncServerOptions {
@@ -22,6 +24,18 @@ export interface SyncServerOptions {
    * allow-all with write, the zero-config dev behaviour.
    */
   authenticate?: SyncAuthenticate;
+  /**
+   * Host names the server answers to, besides `localhost`, `*.localhost` and
+   * IP addresses; `true` allows any. Checked before `authenticate`, on the
+   * websocket upgrade and on the media endpoints: a request whose Host header
+   * names another host is refused with 403, which stops DNS rebinding. A
+   * browser request is also refused when its Origin is neither this server,
+   * a loopback origin nor an allowed host, which stops cross-site pages from
+   * opening the websocket. Entries follow Vite's `server.allowedHosts`: an
+   * exact host name, or `.example.com` for the domain and its subdomains.
+   * @defaultValue `[]`
+   */
+  allowedHosts?: AllowedHosts;
   /** how long a connection may sit without its hello before it is closed */
   helloTimeoutMs?: number;
   /** how long an open document outlives its last client before eviction (default 60s) */
@@ -55,11 +69,13 @@ const error = (id: unknown, message: string) => JSON.stringify({ type: "error", 
 export function createSyncServer({
   root,
   authenticate,
+  allowedHosts,
   helloTimeoutMs = 10_000,
   evictAfterMs,
   upload = {},
 }: SyncServerOptions): SyncServer {
   const authorize = createAuthorize(authenticate);
+  const allowed = createHostCheck(allowedHosts);
   const files = createFiles(root, {
     changed: (relative, state) => docs.diskChanged(relative, state),
     event: (event, relative) => tree.event(event, relative),
@@ -152,10 +168,26 @@ export function createSyncServer({
     };
   });
 
-  return {
-    handleUpgrade: carrier.handleUpgrade,
+  const media = createMediaHandlers(files, authorize, upload);
 
-    ...createMediaHandlers(files, authorize, upload),
+  return {
+    handleUpgrade(request, socket, head) {
+      if (allowed(request)) return carrier.handleUpgrade(request, socket, head);
+      socket.once("finish", () => socket.destroy());
+      socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n");
+    },
+
+    handleUpload(request, response) {
+      if (allowed(request)) return media.handleUpload(request, response);
+      response.statusCode = 403;
+      response.end();
+    },
+
+    handleAsset(request, response) {
+      if (allowed(request)) return media.handleAsset(request, response);
+      response.statusCode = 403;
+      response.end();
+    },
 
     async close() {
       tree.close();

@@ -64,3 +64,17 @@ a Vite plugin) goes in a separate file referenced by `server`:
 Without `authenticate`, anyone who can reach the port can edit. With it,
 the credential comes from `?token=` in the URL by default; override it with
 `auth`. See [Auth](/auth) for writing the hook.
+
+Studio only answers to [allowed hosts](/auth#allowed-hosts): `localhost` and
+IP addresses by default, so other web pages in your browser cannot reach it.
+With `--host`, other devices can open it by IP address, and everyone on the
+network can edit unless you add `authenticate`. To open it by a host name
+instead, add that name to Vite's `allowedHosts` in your server options:
+
+```ts title="studio.server.ts"
+import { defineServerConfig } from "@fumadocs-editor/studio";
+
+export default defineServerConfig({
+  vite: { server: { allowedHosts: ["my-laptop.local"] } },
+});
+```
