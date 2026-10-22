@@ -67,7 +67,9 @@ header.
   pauses until you pick **keep mine** or **take disk**.
 
 The status dot shows where the document stands. Mirror it elsewhere with
-`sync.onStatus`.
+`sync.onStatus`: it is called with the current status once the document is
+open (again when `path` changes), then on every change. Inside
+`MdxEditor.Root`, `useSyncStatus()` returns the same status.
 
 | Status     | Meaning                                       |
 | ---------- | --------------------------------------------- |

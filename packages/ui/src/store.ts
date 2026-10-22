@@ -45,7 +45,11 @@ export interface MdxEditorSync {
    * host. Pass your own for auth, another server, or collab.
    */
   client?: SyncClient;
-  /** also shown by `MdxEditor.Status`; use this to mirror it elsewhere */
+  /**
+   * Also shown by `MdxEditor.Status`; use this to mirror it elsewhere.
+   * Called with the current status once the document for `path` is open
+   * (again after `path` changes), then on every change.
+   */
   onStatus?: (status: DocumentStatus) => void;
   /**
    * File was read: text plus scope data. Does not change editor behavior;
@@ -200,7 +204,8 @@ export class DocumentStore {
         components: this.components,
         syntax: this.syntax,
       });
-      let reported = this.state.status;
+      // null: report the opening status too, even if it equals the previous document's
+      let reported: DocumentStatus | null = null;
       const update = () => {
         if (token !== this.token) return;
         const status = doc.status();
