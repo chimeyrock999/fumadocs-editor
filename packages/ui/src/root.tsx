@@ -7,6 +7,7 @@ import { EditorContext, useDocumentState, useEditorContext } from "./components/
 import { fumadocsUiComponents } from "./components/fumadocs-ui";
 import type { FileProvider, MediaProvider } from "./components/media";
 import type { UiComponentSpec } from "./components/spec";
+import type { BubbleItem } from "./bubble-items";
 import { DocumentStore, type MdxEditorRef, type MdxEditorSync } from "./store";
 import { useEditorTheme, type EditorTheme } from "./theme";
 
@@ -33,6 +34,12 @@ export interface MdxEditorRootProps {
    * Extensions page.
    */
   extensions?: AnyExtension[];
+  /**
+   * Buttons in the format bubble, after the built-in ones, while text is
+   * selected. Fixed for the life of the root. Bind a shortcut in
+   * `extensions`; `shortcut` only shows it in the tooltip.
+   */
+  bubbleItems?: BubbleItem[];
   /**
    * Sync with a file: autosave, live merge of disk edits, conflict chip, or
    * a shared doc when the client has collab on.
@@ -74,6 +81,7 @@ export function MdxEditorRoot({
   components = fumadocsUiComponents,
   syntax,
   extensions,
+  bubbleItems,
   sync,
   cacheKey,
   theme,
@@ -84,7 +92,9 @@ export function MdxEditorRoot({
   children,
 }: MdxEditorRootProps) {
   const options = { defaultValue, sync, cacheKey, onChange };
-  const [store] = useState(() => new DocumentStore(components, syntax, options, { extensions }));
+  const [store] = useState(
+    () => new DocumentStore(components, syntax, options, { extensions, bubbleItems }),
+  );
   store.options = options;
   store.media = media;
   store.files = files;

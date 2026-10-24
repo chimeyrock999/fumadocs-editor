@@ -132,7 +132,13 @@ export const LiveEditor = memo(function LiveEditor({
       {editor && editable && frame && (
         <>
           <BlockGutter editor={editor} touch={touch} />
-          <EditorBubble editor={editor} specs={store.specs} touch={touch} frame={frame} />
+          <EditorBubble
+            editor={editor}
+            specs={store.specs}
+            items={store.bubbleItems}
+            touch={touch}
+            frame={frame}
+          />
         </>
       )}
     </div>
