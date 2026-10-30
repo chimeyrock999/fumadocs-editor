@@ -276,6 +276,8 @@ export function createSyncClient({
       doc.emit();
       statusChanged?.();
     });
+    // `onStatus` only reports changes: a client that is offline or denied already never reports one
+    if (status === "offline" || status === "denied") doc.settle(new Error(`sync ${status}`));
     return doc;
   };
 
