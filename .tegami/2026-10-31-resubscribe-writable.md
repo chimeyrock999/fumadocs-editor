@@ -18,3 +18,6 @@ refused and retried.
   local and are saved once write access comes back.
 - `sync.onWritable` in `@fumadocs-editor/ui` reports a change after the
   document opened; the value at opening still comes in `onOpen`.
+- `MdxEditor.Status` shows **Read only** (or **Read only, not saved** with
+  pending edits) while the document is not writable, and `useSyncStatus()`
+  returns `writable`.

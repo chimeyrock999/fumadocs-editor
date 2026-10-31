@@ -190,3 +190,42 @@ test("onWritable reports a change of write access after a reconnect, not the ope
   expect(writable).toEqual([false, true]);
   expect(opened).toEqual([true]);
 });
+
+test("the status shows a document that lost write access as read only", async () => {
+  vi.useFakeTimers();
+  const access = { writable: true, drop() {} };
+  const client = backend({ "a.mdx": "First.\n" }, access);
+  render({ sync: { client, path: "a.mdx" } });
+  await settle();
+  await settle();
+  const label = () => host!.textContent;
+  expect(label()).toContain("Saved");
+
+  const reconnect = async () => {
+    act(() => access.drop());
+    act(() => void vi.advanceTimersByTime(1000)); // the reconnect backoff
+    await settle();
+    await settle();
+  };
+  access.writable = false;
+  await reconnect();
+  expect(label()).toContain("Read only");
+  expect(label()).not.toContain("Saved");
+
+  // an edit the host let through is kept, and the status says it is not saved
+  const editor = await hydrate();
+  act(() => {
+    editor.commands.setTextSelection(1);
+    editor.commands.insertContent("LOCAL ");
+  });
+  act(() => void vi.advanceTimersByTime(2000));
+  await settle();
+  expect(label()).toContain("Read only, not saved");
+
+  access.writable = true;
+  await reconnect();
+  act(() => void vi.advanceTimersByTime(2000)); // the autosave
+  await settle();
+  expect(label()).not.toContain("Read only");
+  expect(label()).toContain("Saved");
+});

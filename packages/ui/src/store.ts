@@ -93,6 +93,8 @@ export interface DocumentState {
   sourceError: string | null;
   /** null without `sync` */
   status: DocumentStatus | null;
+  /** whether the server takes this connection's edits; true without `sync` */
+  writable: boolean;
   collab: CollabBinding | null;
   /** bumps when the document is replaced wholesale: another file, a collab re-seed */
   generation: number;
@@ -111,6 +113,7 @@ function initialState(options: DocumentOptions, generation: number): DocumentSta
     text: options.sync ? "" : options.defaultValue,
     sourceError: null,
     status: options.sync ? "synced" : null,
+    writable: true,
     collab: null,
     generation,
   };
@@ -231,7 +234,7 @@ export class DocumentStore {
         if (token !== this.token) return;
         const status = doc.status();
         // a re-seeded collab doc passes through null, which remounts the editor
-        this.set({ status, collab: doc.collab() });
+        this.set({ status, writable: doc.writable(), collab: doc.collab() });
         if (writable !== null && doc.writable() !== writable) {
           writable = doc.writable();
           this.options.sync?.onWritable?.(writable);
