@@ -57,6 +57,13 @@ export interface MdxEditorSync {
    * wire `writable` into `editable` yourself.
    */
   onOpen?: (result: { text: string; writable: boolean }) => void;
+  /**
+   * Write access changed after the document opened: the server answered
+   * differently after a reconnect, for example once the person signed in
+   * again as a reader. The value at opening comes in `onOpen`. Like `onOpen`,
+   * wire it into `editable` yourself; edits made while `false` are not saved.
+   */
+  onWritable?: (writable: boolean) => void;
 }
 
 export type SerializeFn = (doc: PMNode, snapshot?: DocSnapshot) => string;
@@ -218,11 +225,17 @@ export class DocumentStore {
       });
       // null: report the opening status too, even if it equals the previous document's
       let reported: DocumentStatus | null = null;
+      // null until opened: the value at opening goes to `onOpen`, changes to `onWritable`
+      let writable: boolean | null = null;
       const update = () => {
         if (token !== this.token) return;
         const status = doc.status();
         // a re-seeded collab doc passes through null, which remounts the editor
         this.set({ status, collab: doc.collab() });
+        if (writable !== null && doc.writable() !== writable) {
+          writable = doc.writable();
+          this.options.sync?.onWritable?.(writable);
+        }
         if (status === reported) return;
         reported = status;
         this.options.sync?.onStatus?.(status);
@@ -244,11 +257,17 @@ export class DocumentStore {
       doc.opened.then(
         (result) => {
           if (token !== this.token) return;
+          writable = result.writable;
           this.options.sync?.onOpen?.(result);
           this.load(result.text, token);
+          update();
         },
         () => {
-          if (token === this.token) this.load(this.options.defaultValue, token);
+          if (token !== this.token) return;
+          // the editor opened on its own content, as if writable
+          writable = true;
+          this.load(this.options.defaultValue, token);
+          update();
         },
       );
     });
