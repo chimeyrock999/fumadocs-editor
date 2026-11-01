@@ -17,6 +17,8 @@ export interface Resource {
   unsubscribe(conn: Connection, message: Incoming): void;
   update(conn: Connection, message: Incoming): Promise<void>;
   leave(conn: Connection): void;
+  /** the connection's scope was replaced: stop sending it what it may no longer read */
+  rescope(conn: Connection): void;
 }
 
 type Body<T> = T extends unknown ? Omit<T, "type" | "id"> : never;

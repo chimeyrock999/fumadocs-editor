@@ -305,6 +305,8 @@ export function createDocAuthority({
       // external edits must keep flowing into the Y.Doc
       files.watch();
       const doc = await open(relative, components, message.syntax as SyntaxOptions | undefined);
+      // the scope may have been replaced while the doc opened
+      if (!conn.scope.read(relative)) throw new Error(`read denied: ${relative}`);
       const update = Y.encodeStateAsUpdate(doc.ydoc, vector);
       clearTimeout(doc.evict);
       doc.evict = undefined;
@@ -344,6 +346,10 @@ export function createDocAuthority({
         const user = conn.scope.user;
         applyAwarenessUpdate(doc.awareness, user ? withUser(update, user) : update, conn);
       }
+    },
+
+    rescope(conn) {
+      for (const doc of live.values()) if (!conn.scope.read(doc.path)) leaveDoc(doc, conn);
     },
 
     leave(conn) {

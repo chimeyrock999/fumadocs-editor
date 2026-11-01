@@ -116,6 +116,8 @@ export function createFiles(
       if (!conn.scope.read(relative)) throw new Error(`read denied: ${relative}`);
       watch();
       const state = await read(relative);
+      // the scope may have been replaced while the file was read
+      if (!conn.scope.read(relative)) throw new Error(`read denied: ${relative}`);
       let set = subscribers.get(relative);
       if (!set) subscribers.set(relative, (set = new Set()));
       set.add(conn);
@@ -156,6 +158,13 @@ export function createFiles(
 
     leave(conn) {
       for (const [relative, set] of subscribers) {
+        if (set.delete(conn) && set.size === 0) subscribers.delete(relative);
+      }
+    },
+
+    rescope(conn) {
+      for (const [relative, set] of subscribers) {
+        if (conn.scope.read(relative)) continue;
         if (set.delete(conn) && set.size === 0) subscribers.delete(relative);
       }
     },

@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { decodeMessage } from "../codec";
-import { PROTOCOL } from "../protocol";
+import { PROTOCOL, type SyncUser } from "../protocol";
 import { createDocAuthority } from "./authority";
 import type { Connection, Incoming, Resource } from "./connection";
 import { createFiles } from "./files";
@@ -35,12 +35,41 @@ export interface SyncServerOptions {
   upload?: UploadLimits;
 }
 
+/**
+ * One authenticated sync connection, for the host to manage: find the ones
+ * of a session that ended and close them, or check them again after
+ * permissions changed.
+ */
+export interface SyncConnection {
+  /** the upgrade request, as `authenticate` saw it: cookies and headers */
+  readonly request: IncomingMessage;
+  /** the client's `auth()` payload from the hello, verbatim */
+  readonly payload: unknown;
+  /** the user the current scope names */
+  readonly user: SyncUser | undefined;
+  /**
+   * Runs `authenticate` again with the same request and payload. `null` (or
+   * a throw) closes the connection and resolves `false`. A scope replaces
+   * the current one and resolves `true`: files and documents it may no
+   * longer read stop reaching the connection, and later reads and writes
+   * are checked against it.
+   *
+   * The client is not told. To have it pick up a changed `write`, call
+   * `close()` instead: it reconnects, authenticates and re-subscribes.
+   */
+  reauthenticate(): Promise<boolean>;
+  /** closes the socket; the client reconnects and `authenticate` decides again */
+  close(): void;
+}
+
 export interface SyncServer {
   handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void;
   /** POST media endpoint: stores under `assets/`, requires write on the stored path */
   handleUpload(request: IncomingMessage, response: ServerResponse): void;
   /** GET asset endpoint (`/<relative>` after the mount prefix), requires read */
   handleAsset(request: IncomingMessage, response: ServerResponse): void;
+  /** the connections past their hello, open now */
+  connections(): SyncConnection[];
   close(): Promise<void>;
 }
 
@@ -90,8 +119,11 @@ export function createSyncServer({
     for (const resource of resources.values()) resource.leave(conn);
   };
 
+  const handles = new Set<SyncConnection>();
+
   const carrier = createWsCarrier((peer, request) => {
     let conn: Connection | undefined;
+    let handle: SyncConnection | undefined;
     let authenticating = false;
     let closed = false;
     const helloTimer = setTimeout(() => {
@@ -106,7 +138,7 @@ export function createSyncServer({
         } catch {
           return;
         }
-        if (!message || typeof message !== "object") return;
+        if (!message || typeof message !== "object" || closed) return;
         if (conn) {
           const current = conn;
           const fail = (reason: unknown) => {
@@ -140,13 +172,43 @@ export function createSyncServer({
             return peer.close();
           }
           clearTimeout(helloTimer);
-          conn = { scope, send: peer.send };
+          const current: Connection = { scope, send: peer.send };
+          // nothing reaches the connection, or comes from it, once the host closed it
+          const close = () => {
+            if (closed) return;
+            closed = true;
+            if (handle) handles.delete(handle);
+            leave(current);
+            peer.close();
+          };
+          conn = current;
+          handle = {
+            request,
+            payload: message.auth,
+            get user() {
+              return current.scope.user;
+            },
+            async reauthenticate() {
+              const next = await authorize(request, message.auth);
+              if (closed) return false;
+              if (!next) {
+                close();
+                return false;
+              }
+              current.scope = next;
+              for (const resource of resources.values()) resource.rescope(current);
+              return true;
+            },
+            close,
+          };
+          handles.add(handle);
           peer.send(JSON.stringify({ type: "hello", id: message.id, user: scope.user }));
         });
       },
       closed() {
         closed = true;
         clearTimeout(helloTimer);
+        if (handle) handles.delete(handle);
         if (conn) leave(conn);
       },
     };
@@ -156,6 +218,8 @@ export function createSyncServer({
     handleUpgrade: carrier.handleUpgrade,
 
     ...createMediaHandlers(files, authorize, upload),
+
+    connections: () => [...handles],
 
     async close() {
       tree.close();

@@ -380,6 +380,14 @@ export function createTreeResource(files: Files, remove: (relative: string) => P
       subscribers.delete(conn);
     },
 
+    rescope(conn) {
+      // pushes already filter by the current scope: send the tree it now sees
+      if (!subscribers.has(conn) || !workspace) return;
+      void workspace.then((ws) => {
+        if (subscribers.has(conn)) conn.send(encode({ resource: "tree", tree: treeFor(conn, ws) }));
+      });
+    },
+
     close() {
       clearTimeout(timer);
     },

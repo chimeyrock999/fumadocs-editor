@@ -71,6 +71,25 @@ Upload requests do not share the websocket, so send the same payload in the
 
 <include meta='title="media.ts"'>../examples/auth-upload.ts</include>
 
+## When access changes
+
+A scope is resolved when a connection authenticates and kept until it
+reconnects. When a session ends or permissions change while sockets are open,
+manage them through `sync.connections()`:
+
+- `close()` ends a connection. The client reconnects, `authenticate` runs
+  again, and the client's documents re-subscribe with the new scope.
+- `reauthenticate()` runs `authenticate` again on the open connection. `null`
+  closes it; a scope replaces the current one, and files and documents it may
+  no longer read stop reaching the client.
+
+<include meta='title="server.ts"'>../examples/auth-connections.ts</include>
+
+`reauthenticate()` does not tell the client. When `write` changes, use
+`close()` so the editor learns it on reconnect, as if it opened again.
+
+<auto-type-table path="../../../packages/core/src/sync/node/server.ts" name="SyncConnection" />
+
 ## In the editor
 
 The server enforces the scope; the editor never restricts itself. When a user

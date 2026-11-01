@@ -6,7 +6,7 @@ import { AUTH_HEADER, type SyncUser } from "../protocol";
  * root-relative posix path, so the predicates are per-document permissions;
  * they run on the message hot path and must be synchronous and cheap. Async
  * policy resolves inside `authenticate` and closes over the result (changes
- * apply on reconnect).
+ * apply on reconnect, or on `SyncConnection.reauthenticate()`).
  */
 export interface SyncScope {
   /** authoritative presence identity: awareness disagreeing on it is rewritten */
